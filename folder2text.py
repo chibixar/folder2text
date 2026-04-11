@@ -42,22 +42,48 @@ DEFAULT_SKIP_DIRS = {
 }
 
 
-def detect_clipboard_cmd() -> list[str] | None:
+def detect_clipboard_cmd(debug: bool = False) -> list[str] | None:
     """Return the clipboard copy command for the current platform, or None."""
     import platform
     system = platform.system()
+    if debug:
+        print(f"  [clipboard] platform: {system}", file=sys.stderr)
+
     if system == "Darwin":
         return ["pbcopy"]
     if system == "Windows":
         return ["clip"]
-    # Linux — try xclip, then xsel, then wl-copy (Wayland)
-    for cmd, args in [
-        ("xclip", ["-selection", "clipboard"]),
-        ("xsel",  ["--clipboard", "--input"]),
-        ("wl-copy", []),
-    ]:
-        if shutil.which(cmd):
+
+    has_x11     = bool(os.environ.get("DISPLAY"))
+    has_wayland = bool(os.environ.get("WAYLAND_DISPLAY"))
+
+    if debug:
+        print(f"  [clipboard] DISPLAY={os.environ.get('DISPLAY')!r}", file=sys.stderr)
+        print(f"  [clipboard] WAYLAND_DISPLAY={os.environ.get('WAYLAND_DISPLAY')!r}", file=sys.stderr)
+
+    candidates = []
+    if has_x11:
+        candidates += [
+            ("xclip", ["-selection", "clipboard"]),
+            ("xsel",  ["--clipboard", "--input"]),
+        ]
+    if has_wayland:
+        candidates += [("wl-copy", [])]
+    if not candidates:
+        # Neither env var set — try everything
+        candidates = [
+            ("xclip", ["-selection", "clipboard"]),
+            ("xsel",  ["--clipboard", "--input"]),
+            ("wl-copy", []),
+        ]
+
+    for cmd, args in candidates:
+        found = shutil.which(cmd)
+        if debug:
+            print(f"  [clipboard] {cmd}: {'found at ' + found if found else 'not found'}", file=sys.stderr)
+        if found:
             return [cmd] + args
+
     return None
 
 
@@ -163,6 +189,7 @@ def convert(
     verbose: bool,
     separator: str,
     copy: bool = False,
+    clipboard_cmd_override: str | None = None,
 ) -> None:
     root = Path(folder).resolve()
     if not root.is_dir():
@@ -253,10 +280,19 @@ def convert(
     emit(f"\n\n# End of folder2text output ({included} files included, {skipped} skipped)\n")
 
     if copy:
-        clipboard_cmd = detect_clipboard_cmd()
+        if clipboard_cmd_override:
+            clipboard_cmd = clipboard_cmd_override.split()
+        else:
+            clipboard_cmd = detect_clipboard_cmd(debug=verbose)
         if not clipboard_cmd:
             print(
-                "Error: no clipboard tool found. Install xclip, xsel, or wl-copy on Linux.",
+                "Error: no working clipboard tool found.\n"
+                "  Run with -v to see what was detected.\n"
+                "  Or specify one manually: --clipboard-cmd 'xclip -selection clipboard'\n"
+                "  Install options:\n"
+                "    sudo apt install xclip   # Ubuntu/Debian, X11\n"
+                "    sudo apt install wl-clipboard  # Ubuntu/Debian, Wayland\n"
+                "    sudo dnf install xclip   # Fedora",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -339,6 +375,8 @@ Examples:
                         help="Print per-file status to stderr")
     parser.add_argument("-c", "--copy", action="store_true",
                         help="Copy output directly to clipboard (auto-detects pbcopy/xclip/xsel/wl-copy)")
+    parser.add_argument("--clipboard-cmd", metavar="CMD",
+                        help="Override clipboard command (e.g. --clipboard-cmd 'xclip -selection clipboard')")
     parser.add_argument("--list-skip-defaults", action="store_true",
                         help="Print the default skip lists and exit")
 
@@ -382,6 +420,7 @@ Examples:
         verbose=args.verbose,
         separator=args.format,
         copy=args.copy,
+        clipboard_cmd_override=args.clipboard_cmd,
     )
 
 
