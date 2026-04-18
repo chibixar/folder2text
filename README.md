@@ -1,4 +1,4 @@
-# 📂 folder2text
+# folder2text
 
 > Instantly convert any folder into a single text snapshot — ready to paste into ChatGPT, Claude, Gemini, or any AI assistant.
 
@@ -8,11 +8,9 @@ folder2text ./my_project -c   # done. it's in your clipboard.
 
 ---
 
-## Why?
+## Description
 
-AI assistants are incredible at reviewing code, explaining projects, and catching bugs — but getting your files *into* the chat is a pain. You end up copying files one by one, losing context, losing structure.
-
-`folder2text` solves this in one command. It walks your directory, skips all the junk (binaries, `node_modules`, `.git`, build artifacts), and produces a clean, well-structured document you can paste straight into any AI chat window.
+`folder2text` walks your directory, skips all the junk (binaries, `node_modules`, `.git`, build artifacts), and produces a clean, well-structured document you can paste straight into any AI chat window.
 
 **One command. Everything in context.**
 
@@ -56,15 +54,15 @@ folder2text ./my_project --tree -c
 
 | | |
 |---|---|
-| 📋 **One-command clipboard copy** | `-c` pipes straight to your clipboard — no temp files |
-| 🧠 **Smart binary detection** | Two-layer check: extension list + null-byte scan. Compiled files, images, archives never slip through |
-| 🗂️ **Noise filtering** | Skips `node_modules`, `.git`, `__pycache__`, `venv`, `dist`, and more out of the box |
-| 🎯 **Allowlist mode** | `--include .py .md` — only grab exactly what you need |
-| 🚫 **Flexible exclusions** | Skip by extension, directory name, or glob pattern |
-| 🌳 **Directory tree** | Optional ASCII tree at the top gives the AI full structural context |
-| 📐 **Three output formats** | Markdown (default), XML, or plain text |
-| 📏 **Token estimate** | Prints approximate token count after copying so you know if you're near your context limit |
-| ⚡ **Zero dependencies** | Pure Python stdlib — nothing to `pip install` |
+| **One-command clipboard copy** | `-c` pipes straight to your clipboard — no temp files |
+| **Smart binary detection** | Two-layer check: extension list + null-byte scan. Compiled files, images, archives never slip through |
+| **Noise filtering** | Skips `node_modules`, `.git`, `__pycache__`, `venv`, `dist`, and more out of the box |
+| **Allowlist mode** | `--include .py .md` — only grab exactly what you need |
+| **Flexible exclusions** | Skip by extension, directory name, or glob pattern |
+| **Directory tree** | Optional ASCII tree at the top gives the AI full structural context |
+| **Three output formats** | Markdown (default), XML, or plain text |
+| **Token estimate** | Prints approximate token count after copying so you know if you're near your context limit |
+| **Zero dependencies** | Pure Python stdlib — nothing to `pip install` |
 
 ---
 
