@@ -18,17 +18,62 @@ folder2text ./my_project -c   # done. it's in your clipboard.
 
 ## Install
 
-No dependencies. Pure Python. Works on Linux, macOS, and Windows.
+No dependencies. Pure Python. Requires **Python 3.10+**.
+
+### Linux
 
 ```bash
-# Download
 curl -O https://raw.githubusercontent.com/chibixar/folder2text/main/folder2text.py
-
-# Make it a system command
 chmod +x folder2text.py && sudo mv folder2text.py /usr/local/bin/folder2text
 ```
 
-**Requires Python 3.10+**
+For clipboard support install `wl-copy` (Wayland) or `xclip` (X11):
+
+```bash
+sudo dnf install wl-clipboard    # Fedora — Wayland (KDE/GNOME)
+sudo dnf install xclip           # Fedora — X11
+sudo apt install wl-clipboard    # Ubuntu/Debian — Wayland
+sudo apt install xclip           # Ubuntu/Debian — X11
+```
+
+### MacOS
+
+```bash
+curl -O https://raw.githubusercontent.com/chibixar/folder2text/main/folder2text.py
+chmod +x folder2text.py && sudo mv folder2text.py /usr/local/bin/folder2text
+```
+
+Clipboard (`-c`) works out of the box via `pbcopy` — no extra tools needed.
+
+Python 3.10+ via [Homebrew](https://brew.sh) if you don't have it:
+
+```bash
+brew install python
+```
+
+### Windows
+
+Download [`folder2text.py`](https://raw.githubusercontent.com/chibixar/folder2text/main/folder2text.py), then run it with Python:
+
+```powershell
+python folder2text.py .\my_project -c
+```
+
+To use it system-wide as `folder2text`, create a wrapper batch file (run once in an Administrator terminal):
+
+```powershell
+New-Item -ItemType Directory -Force "C:\tools"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/chibixar/folder2text/main/folder2text.py" -OutFile "C:\tools\folder2text.py"
+
+@"
+@echo off
+python "C:\tools\folder2text.py" %*
+"@ | Set-Content "C:\tools\folder2text.bat"
+```
+
+Then add `C:\tools` to your `PATH` via System Settings → Environment Variables.
+
+Clipboard (`-c`) uses `clip`, which is built into Windows — no extra tools needed.
 
 ---
 
@@ -157,17 +202,26 @@ folder2text ./project -c
 
 `-c` / `--copy` auto-detects the right tool for your system:
 
-| Platform | Tool |
-|----------|------|
-| macOS | `pbcopy` (built-in) |
-| Windows | `clip` (built-in) |
-| Linux X11 | `xclip` or `xsel` |
-| Linux Wayland | `wl-copy` |
+| Platform | Tool | Needs installing? |
+|----------|------|-------------------|
+| macOS | `pbcopy` | No — built-in |
+| Windows | `clip` | No — built-in |
+| Linux Wayland | `wl-copy` | Based on distro — built-in `sudo apt/dnf install wl-clipboard` |
+| Linux X11 | `xclip` or `xsel` | Based on distro — built-in `sudo apt/dnf install xclip` |
 
-On Linux, install one if needed:
+Detection uses `WAYLAND_DISPLAY` and `DISPLAY` env vars to pick the right backend automatically. If clipboard isn't working, run with `-v` to see what's being detected, or override manually:
+
 ```bash
-sudo apt install xclip      # Ubuntu/Debian
-sudo dnf install xclip      # Fedora
+folder2text ./project --clipboard-cmd 'wl-copy'
+folder2text ./project --clipboard-cmd 'xclip -selection clipboard'
+```
+
+**Troubleshooting on Linux:** if the env vars aren't set (e.g. launched via SSH or sudo), export the relevant one first:
+
+```bash
+export WAYLAND_DISPLAY=wayland-0   # Wayland (Fedora KDE/GNOME)
+export DISPLAY=:0                  # X11
+folder2text ./project -c
 ```
 
 ---
