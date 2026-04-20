@@ -27,7 +27,7 @@ curl -O https://raw.githubusercontent.com/chibixar/folder2text/main/folder2text.
 chmod +x folder2text.py && sudo mv folder2text.py /usr/local/bin/folder2text
 ```
 
-For clipboard support install `wl-copy` (Wayland) or `xclip` (X11):
+For clipboard support if not installed `wl-copy` (Wayland) or `xclip` (X11):
 
 ```bash
 sudo dnf install wl-clipboard    # Fedora — Wayland (KDE/GNOME)
