@@ -177,6 +177,52 @@ def build_tree(root: Path, files: list[Path]) -> str:
     return "\n".join(lines)
 
 
+def _output(
+    text: str,
+    output: str | None,
+    copy: bool,
+    clipboard_cmd_override: str | None,
+    verbose: bool,
+    label: str,
+    skipped: int,
+) -> None:
+    """Write text to stdout, a file, or the clipboard."""
+    if copy:
+        if clipboard_cmd_override:
+            clipboard_cmd = clipboard_cmd_override.split()
+        else:
+            clipboard_cmd = detect_clipboard_cmd(debug=verbose)
+        if not clipboard_cmd:
+            print(
+                "Error: no working clipboard tool found.\n"
+                "  Run with -v to see what was detected.\n"
+                "  Or specify one manually: --clipboard-cmd \'xclip -selection clipboard\'\n"
+                "  Install options:\n"
+                "    sudo apt install xclip          # Ubuntu/Debian, X11\n"
+                "    sudo apt install wl-clipboard   # Ubuntu/Debian, Wayland\n"
+                "    sudo dnf install xclip          # Fedora, X11\n"
+                "    sudo dnf install wl-clipboard   # Fedora, Wayland",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        char_count = len(text)
+        try:
+            subprocess.run(clipboard_cmd, input=text.encode("utf-8"), check=True)
+        except subprocess.CalledProcessError as e:
+            print(f"Error: clipboard command failed: {e}", file=sys.stderr)
+            sys.exit(1)
+        approx_tokens = char_count // 4
+        skipped_str = f", {skipped} skipped" if skipped else ""
+        print(f"Copied to clipboard! {label}, ~{char_count:,} chars (~{approx_tokens:,} tokens){skipped_str}.")
+    elif output:
+        with open(output, "w", encoding="utf-8", errors="replace") as f:
+            f.write(text)
+        print(f"Done. Written to \'{output}\'.")
+    else:
+        print(text, end="")
+
+
+
 def convert(
     folder: str,
     output: str | None,
@@ -192,8 +238,23 @@ def convert(
     clipboard_cmd_override: str | None = None,
 ) -> None:
     root = Path(folder).resolve()
+
+    # Single-file mode: if the path points to a file, just copy/output that file directly
+    if root.is_file():
+        if is_binary_file(root):
+            print(f"Error: '{folder}' appears to be a binary file.", file=sys.stderr)
+            sys.exit(1)
+        try:
+            content = root.read_text(encoding="utf-8", errors="replace")
+        except OSError as e:
+            print(f"Error reading '{folder}': {e}", file=sys.stderr)
+            sys.exit(1)
+        _output(content, output, copy, clipboard_cmd_override, verbose,
+                label=f"1 file ({format_size(root.stat().st_size)})", skipped=0)
+        return
+
     if not root.is_dir():
-        print(f"Error: '{folder}' is not a directory.", file=sys.stderr)
+        print(f"Error: '{folder}' is not a file or directory.", file=sys.stderr)
         sys.exit(1)
 
     max_bytes = int(max_file_size_mb * 1024 * 1024)
@@ -211,21 +272,10 @@ def convert(
         print("No files matched the criteria. Nothing to output.", file=sys.stderr)
         sys.exit(0)
 
-    # Determine output target
-    out_file = None
-    buf = []          # used when copying to clipboard
+    buf = []
 
-    if copy:
-        # Accumulate into a list; pipe to clipboard at the end
-        def emit(text: str) -> None:
-            buf.append(text)
-    elif output:
-        out_file = open(output, "w", encoding="utf-8", errors="replace")
-        def emit(text: str) -> None:
-            out_file.write(text)
-    else:
-        def emit(text: str) -> None:
-            print(text, end="")
+    def emit(text: str) -> None:
+        buf.append(text)
 
     # Header
     header_lines = [
@@ -279,41 +329,8 @@ def convert(
     # Footer
     emit(f"\n\n# End of folder2text output ({included} files included, {skipped} skipped)\n")
 
-    if copy:
-        if clipboard_cmd_override:
-            clipboard_cmd = clipboard_cmd_override.split()
-        else:
-            clipboard_cmd = detect_clipboard_cmd(debug=verbose)
-        if not clipboard_cmd:
-            print(
-                "Error: no working clipboard tool found.\n"
-                "  Run with -v to see what was detected.\n"
-                "  Or specify one manually: --clipboard-cmd 'xclip -selection clipboard'\n"
-                "  Install options:\n"
-                "    sudo apt install xclip   # Ubuntu/Debian, X11\n"
-                "    sudo apt install wl-clipboard  # Ubuntu/Debian, Wayland\n"
-                "    sudo dnf install xclip   # Fedora",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        full_text = "".join(buf)
-        char_count = len(full_text)
-        try:
-            proc = subprocess.run(clipboard_cmd, input=full_text.encode("utf-8"), check=True)
-        except subprocess.CalledProcessError as e:
-            print(f"Error: clipboard command failed: {e}", file=sys.stderr)
-            sys.exit(1)
-        approx_tokens = char_count // 4
-        print(
-            f"Copied to clipboard! "
-            f"{included} files, ~{char_count:,} chars (~{approx_tokens:,} tokens). "
-            f"{skipped} skipped."
-        )
-    elif out_file:
-        out_file.close()
-        print(f"Done. {included} files written to '{output}' ({skipped} skipped).")
-    else:
-        print(f"\n# Stats: {included} included, {skipped} skipped.", file=sys.stderr)
+    _output("".join(buf), output, copy, clipboard_cmd_override, verbose,
+            label=f"{included} files", skipped=skipped)
 
 
 def main() -> None:
