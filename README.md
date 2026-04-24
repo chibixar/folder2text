@@ -91,6 +91,8 @@ folder2text ./my_project --include .py .ts .md -c
 
 # Add a directory tree at the top so the AI understands your structure
 folder2text ./my_project --tree -c
+# Minimal output to save tokens (no metadata: size, date, etc)
+folder2text ./my_project -m #or --minimal
 ```
 
 ---

@@ -236,6 +236,7 @@ def convert(
     separator: str,
     copy: bool = False,
     clipboard_cmd_override: str | None = None,
+    minimal: bool = False,
 ) -> None:
     root = Path(folder).resolve()
 
@@ -278,13 +279,14 @@ def convert(
         buf.append(text)
 
     # Header
-    header_lines = [
-        f"# folder2text output",
-        f"# Source   : {root}",
-        f"# Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        f"# Files    : {len(files)}",
-    ]
-    emit("\n".join(header_lines) + "\n")
+    if not minimal:
+        header_lines = [
+            f"# folder2text output",
+            f"# Source   : {root}",
+            f"# Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            f"# Files    : {len(files)}",
+        ]
+        emit("\n".join(header_lines) + "\n")
 
     if show_tree:
         emit("\n## Directory Tree\n\n```\n")
@@ -316,18 +318,22 @@ def convert(
 
         if separator == "markdown":
             ext = filepath.suffix.lstrip(".")
-            emit(f"\n\n## {rel}  ({size_str})\n\n```{ext}\n{content}\n```\n")
+            header = f"## {rel}" if minimal else f"## {rel}  ({size_str})"
+            emit(f"\n\n{header}\n\n```{ext}\n{content}\n```\n")
         elif separator == "xml":
-            emit(f'\n\n<file path="{rel}" size="{size_str}">\n{content}\n</file>\n')
+            attrs = f'path="{rel}"' if minimal else f'path="{rel}" size="{size_str}"'
+            emit(f"\n\n<file {attrs}>\n{content}\n</file>\n")
         else:  # plain
             divider = "=" * 72
-            emit(f"\n\n{divider}\n FILE: {rel}  ({size_str})\n{divider}\n\n{content}\n")
+            label = f" FILE: {rel}" if minimal else f" FILE: {rel}  ({size_str})"
+            emit(f"\n\n{divider}\n{label}\n{divider}\n\n{content}\n")
 
         if verbose:
             print(f"  [ok        ] {rel}  ({size_str})", file=sys.stderr)
 
     # Footer
-    emit(f"\n\n# End of folder2text output ({included} files included, {skipped} skipped)\n")
+    if not minimal:
+        emit(f"\n\n# End of folder2text output ({included} files included, {skipped} skipped)\n")
 
     _output("".join(buf), output, copy, clipboard_cmd_override, verbose,
             label=f"{included} files", skipped=skipped)
@@ -390,6 +396,8 @@ Examples:
                         help="Include an ASCII directory tree at the top of the output")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="Print per-file status to stderr")
+    parser.add_argument("-m", "--minimal", action="store_true",
+                        help="Output only filenames and content — no size, timestamps, headers or footers")
     parser.add_argument("-c", "--copy", action="store_true",
                         help="Copy output directly to clipboard (auto-detects pbcopy/xclip/xsel/wl-copy)")
     parser.add_argument("--clipboard-cmd", metavar="CMD",
@@ -438,6 +446,7 @@ Examples:
         separator=args.format,
         copy=args.copy,
         clipboard_cmd_override=args.clipboard_cmd,
+        minimal=args.minimal,
     )
 
 
