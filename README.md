@@ -91,6 +91,7 @@ folder2text ./my_project --include .py .ts .md -c
 
 # Add a directory tree at the top so the AI understands your structure
 folder2text ./my_project --tree -c
+
 # Minimal output to save tokens (no metadata: size, date, etc)
 folder2text ./my_project -m #or --minimal
 ```
@@ -132,6 +133,7 @@ Filtering:
   --skip-dirs DIR [DIR ...]  Skip additional directory names
   --skip-patterns PAT [...]  Glob patterns to skip (e.g. "test_*" "*.min.js")
   --max-size MB             Skip files larger than N MB (default: 1.0)
+  --minimal -m              No metadata (saves tokens)
 
 Info:
   -v, --verbose             Show per-file status on stderr
