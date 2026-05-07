@@ -220,13 +220,33 @@ def collect_files(
 
 
 def build_tree(root: Path, files: list[Path]) -> str:
-    """Build an ASCII directory tree of included files."""
-    rel_paths = sorted(f.relative_to(root) for f in files)
+    """Build an ASCII directory tree of included files with proper folder nodes."""
+    # Collect every node: intermediate dirs + files, as tuples of parts
+    nodes: set[tuple[str, ...]] = set()
+    for f in files:
+        rel = f.relative_to(root)
+        for i in range(len(rel.parts)):
+            nodes.add(rel.parts[: i + 1])
+
+    sorted_nodes = sorted(nodes)
+
+    def is_last(parts: tuple[str, ...]) -> bool:
+        parent = parts[:-1]
+        siblings = [n for n in sorted_nodes if n[:-1] == parent]
+        return siblings[-1] == parts
+
     lines = [str(root.name) + "/"]
-    for rel in rel_paths:
-        parts = rel.parts
-        indent = "    " * (len(parts) - 1)
-        lines.append(f"{indent}└── {parts[-1]}")
+    for parts in sorted_nodes:
+        depth = len(parts) - 1
+        prefix = ""
+        for i in range(depth):
+            ancestor = parts[: i + 1]
+            prefix += "    " if is_last(ancestor) else "│   "
+        connector = "└── " if is_last(parts) else "├── "
+        name = parts[-1]
+        is_dir = any(n[: len(parts)] == parts and len(n) > len(parts) for n in sorted_nodes)
+        lines.append(f"{prefix}{connector}{name}{'/' if is_dir else ''}")
+
     return "\n".join(lines)
 
 
