@@ -41,6 +41,28 @@ DEFAULT_SKIP_DIRS = {
     "dist", "build", ".next", ".nuxt",
 }
 
+# File name/glob patterns to skip by default (sensitive files)
+DEFAULT_SKIP_PATTERNS = {
+    ".env",
+    ".env.*",        # .env.local, .env.production, etc.
+    "*.pem",         # TLS/SSL private keys
+    "*.key",         # Generic private keys
+    "*.p12",         # PKCS#12 key bundles
+    "*.pfx",         # Same, Windows name
+    "id_rsa",        # SSH private keys
+    "id_ed25519",
+    "id_ecdsa",
+    "id_dsa",
+    ".netrc",        # FTP/HTTP credentials
+    ".htpasswd",     # Apache password files
+    "credentials",   # AWS credentials file (name only, no ext)
+}
+
+# Patterns that are sensitive by default but can be re-included with --allow-pattern
+_SENSITIVE_PATTERN_NOTE = (
+    "Sensitive file patterns (skipped by default, override with --allow-pattern):"
+)
+
 
 def detect_clipboard_cmd(debug: bool = False) -> list[str] | None:
     """Return the clipboard copy command for the current platform, or None."""
@@ -111,16 +133,30 @@ def format_size(size_bytes: int) -> str:
     return f"{size_bytes:.1f} TB"
 
 
+def matches_any_pattern(name: str, rel: str, patterns: set[str] | list[str]) -> bool:
+    """Return True if the filename or relative path matches any of the given glob patterns."""
+    for pat in patterns:
+        if fnmatch.fnmatch(name, pat) or fnmatch.fnmatch(rel, pat):
+            return True
+    return False
+
+
 def collect_files(
     root: Path,
     skip_extensions: set[str],
     include_extensions: set[str] | None,
     skip_dirs: set[str],
     extra_skip_patterns: list[str],
+    sensitive_patterns: set[str],
+    allow_patterns: set[str],
     max_file_size: int,
-) -> list[Path]:
-    """Walk the directory and return a sorted list of files to include."""
+    verbose: bool = False,
+) -> tuple[list[Path], int]:
+    """Walk the directory and return (included_files, sensitive_skipped_count)."""
     files = []
+    sensitive_skipped = 0
+
+    all_skip_patterns = list(extra_skip_patterns)  # user glob patterns (dirs + files)
 
     for dirpath, dirnames, filenames in os.walk(root):
         current = Path(dirpath)
@@ -129,17 +165,24 @@ def collect_files(
         dirnames[:] = [
             d for d in dirnames
             if d not in skip_dirs
-            and not any(fnmatch.fnmatch(d, pat) for pat in extra_skip_patterns)
+            and not matches_any_pattern(d, d, all_skip_patterns)
         ]
         dirnames.sort()
 
         for filename in sorted(filenames):
             filepath = current / filename
-            rel = filepath.relative_to(root)
+            rel = str(filepath.relative_to(root))
 
-            # Skip by glob pattern
-            if any(fnmatch.fnmatch(str(rel), pat) or fnmatch.fnmatch(filename, pat)
-                   for pat in extra_skip_patterns):
+            # Skip by user-supplied glob pattern
+            if matches_any_pattern(filename, rel, all_skip_patterns):
+                continue
+
+            # Skip sensitive files — unless the file is explicitly allowed
+            if (matches_any_pattern(filename, rel, sensitive_patterns)
+                    and not matches_any_pattern(filename, rel, allow_patterns)):
+                if verbose:
+                    print(f"  [skip secret] {rel}", file=sys.stderr)
+                sensitive_skipped += 1
                 continue
 
             ext = filepath.suffix.lower()
@@ -163,7 +206,7 @@ def collect_files(
 
             files.append(filepath)
 
-    return files
+    return files, sensitive_skipped
 
 
 def build_tree(root: Path, files: list[Path]) -> str:
@@ -185,6 +228,7 @@ def _output(
     verbose: bool,
     label: str,
     skipped: int,
+    sensitive_skipped: int,
 ) -> None:
     """Write text to stdout, a file, or the clipboard."""
     if copy:
@@ -196,7 +240,7 @@ def _output(
             print(
                 "Error: no working clipboard tool found.\n"
                 "  Run with -v to see what was detected.\n"
-                "  Or specify one manually: --clipboard-cmd \'xclip -selection clipboard\'\n"
+                "  Or specify one manually: --clipboard-cmd 'xclip -selection clipboard'\n"
                 "  Install options:\n"
                 "    sudo apt install xclip          # Ubuntu/Debian, X11\n"
                 "    sudo apt install wl-clipboard   # Ubuntu/Debian, Wayland\n"
@@ -213,14 +257,14 @@ def _output(
             sys.exit(1)
         approx_tokens = char_count // 4
         skipped_str = f", {skipped} skipped" if skipped else ""
-        print(f"Copied to clipboard! {label}, ~{char_count:,} chars (~{approx_tokens:,} tokens){skipped_str}.")
+        sensitive_str = f", {sensitive_skipped} secret file(s) protected" if sensitive_skipped else ""
+        print(f"Copied to clipboard! {label}, ~{char_count:,} chars (~{approx_tokens:,} tokens){skipped_str}{sensitive_str}.")
     elif output:
         with open(output, "w", encoding="utf-8", errors="replace") as f:
             f.write(text)
-        print(f"Done. Written to \'{output}\'.")
+        print(f"Done. Written to '{output}'.")
     else:
         print(text, end="")
-
 
 
 def convert(
@@ -230,6 +274,8 @@ def convert(
     include_extensions: set[str] | None,
     skip_dirs: set[str],
     extra_skip_patterns: list[str],
+    sensitive_patterns: set[str],
+    allow_patterns: set[str],
     max_file_size_mb: float,
     show_tree: bool,
     verbose: bool,
@@ -251,7 +297,7 @@ def convert(
             print(f"Error reading '{folder}': {e}", file=sys.stderr)
             sys.exit(1)
         _output(content, output, copy, clipboard_cmd_override, verbose,
-                label=f"1 file ({format_size(root.stat().st_size)})", skipped=0)
+                label=f"1 file ({format_size(root.stat().st_size)})", skipped=0, sensitive_skipped=0)
         return
 
     if not root.is_dir():
@@ -260,13 +306,16 @@ def convert(
 
     max_bytes = int(max_file_size_mb * 1024 * 1024)
 
-    files = collect_files(
+    files, sensitive_skipped = collect_files(
         root,
         skip_extensions,
         include_extensions,
         skip_dirs,
         extra_skip_patterns,
+        sensitive_patterns,
+        allow_patterns,
         max_bytes,
+        verbose=verbose,
     )
 
     if not files:
@@ -336,7 +385,7 @@ def convert(
         emit(f"\n\n# End of folder2text output ({included} files included, {skipped} skipped)\n")
 
     _output("".join(buf), output, copy, clipboard_cmd_override, verbose,
-            label=f"{included} files", skipped=skipped)
+            label=f"{included} files", skipped=skipped, sensitive_skipped=sensitive_skipped)
 
 
 def main() -> None:
@@ -364,6 +413,9 @@ Examples:
   # Remove .svg from the default skip list (include SVGs)
   folder2text ./my_project --allow-ext .svg
 
+  # Force-include a sensitive file that is normally protected
+  folder2text ./my_project --allow-pattern .env.example
+
   # Use XML-style separators (good for structured AI prompts)
   folder2text ./my_project --format xml
 
@@ -387,6 +439,9 @@ Examples:
                         help="Additional directory names to skip")
     parser.add_argument("--skip-patterns", nargs="+", metavar="PATTERN",
                         help="Glob patterns for files/dirs to skip (e.g. 'test_*' '*.min.js')")
+    parser.add_argument("--allow-pattern", nargs="+", metavar="PATTERN",
+                        help="Remove these patterns from the default sensitive-file block list "
+                             "(e.g. .env.example to include example env files)")
     parser.add_argument("--max-size", type=float, default=1.0, metavar="MB",
                         help="Skip files larger than this many MB (default: 1.0)")
     parser.add_argument("--format", choices=["plain", "markdown", "xml"],
@@ -414,6 +469,9 @@ Examples:
         print("\nDefault skipped directories:")
         for d in sorted(DEFAULT_SKIP_DIRS):
             print(f"  {d}")
+        print(f"\n{_SENSITIVE_PATTERN_NOTE}")
+        for p in sorted(DEFAULT_SKIP_PATTERNS):
+            print(f"  {p}")
         sys.exit(0)
 
     # Build effective skip set
@@ -433,6 +491,13 @@ Examples:
     if args.skip_dirs:
         skip_dirs.update(args.skip_dirs)
 
+    # Build sensitive patterns set (can be narrowed with --allow-pattern)
+    sensitive_patterns = set(DEFAULT_SKIP_PATTERNS)
+    allow_patterns: set[str] = set(args.allow_pattern) if args.allow_pattern else set()
+    # Direct removal of exact pattern strings the user passed verbatim
+    for p in allow_patterns:
+        sensitive_patterns.discard(p)
+
     convert(
         folder=args.folder,
         output=args.output,
@@ -440,6 +505,8 @@ Examples:
         include_extensions=include_ext,
         skip_dirs=skip_dirs,
         extra_skip_patterns=args.skip_patterns or [],
+        sensitive_patterns=sensitive_patterns,
+        allow_patterns=allow_patterns,
         max_file_size_mb=args.max_size,
         show_tree=args.tree,
         verbose=args.verbose,
