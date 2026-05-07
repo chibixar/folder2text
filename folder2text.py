@@ -58,6 +58,14 @@ DEFAULT_SKIP_PATTERNS = {
     "credentials",   # AWS credentials file (name only, no ext)
 }
 
+# Files matching these patterns are never blocked, even if they also match a
+# sensitive pattern — e.g. .env.example matches .env.* but is safe to share.
+DEFAULT_ALLOW_PATTERNS = {
+    "*.example",   # .env.example, config.example, etc.
+    "*.sample",    # .env.sample, settings.sample, etc.
+    "*.template",  # .env.template, etc.
+}
+
 # Patterns that are sensitive by default but can be re-included with --allow-pattern
 _SENSITIVE_PATTERN_NOTE = (
     "Sensitive file patterns (skipped by default, override with --allow-pattern):"
@@ -177,8 +185,10 @@ def collect_files(
             if matches_any_pattern(filename, rel, all_skip_patterns):
                 continue
 
-            # Skip sensitive files — unless the file is explicitly allowed
+            # Skip sensitive files — unless the file is explicitly allowed or
+            # matches a built-in safe pattern (e.g. *.example, *.sample)
             if (matches_any_pattern(filename, rel, sensitive_patterns)
+                    and not matches_any_pattern(filename, rel, DEFAULT_ALLOW_PATTERNS)
                     and not matches_any_pattern(filename, rel, allow_patterns)):
                 if verbose:
                     print(f"  [skip secret] {rel}", file=sys.stderr)
